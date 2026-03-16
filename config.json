@@ -1,0 +1,13 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "deepseek": {
+    "base_url": "https://chat.deepseek.com"
+  },
+  "browser": {
+    "use_browser": true,
+    "headless": false
+  }
+}
