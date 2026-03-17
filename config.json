@@ -8,6 +8,9 @@
     "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
   },
+  "gemini": {
+    "base_url": "https://gemini.google.com"
+  },
   "browser": {
     "use_browser": true,
     "headless": false,

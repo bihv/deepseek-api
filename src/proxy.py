@@ -1,115 +1,75 @@
-"""DeepSeek API Proxy - Uses browser automation."""
-import asyncio
+"""Proxy router - routes requests to appropriate provider based on model."""
 import logging
-from typing import List, AsyncGenerator, Optional
-from src.models import ChatMessage
+from typing import Optional, Dict, Any, List
+
+from src.providers.base import BaseProvider
+from src.providers.deepseek import DeepSeekProvider
+from src.providers.gemini import GeminiProvider
 from src.config import config
 
 logger = logging.getLogger(__name__)
 
 
-class DeepSeekProxy:
-    """Proxy to interact with DeepSeek using browser automation."""
+class ProxyRouter:
+    """Routes requests to appropriate provider based on model."""
     
-    def __init__(self, base_url: str = None, use_browser: bool = True):
-        self.base_url = base_url or config.deepseek.base_url
-        self._browser = None
-        self.use_browser = use_browser
-        
-        if self.use_browser:
-            self._init_browser()
+    def __init__(self):
+        self._providers: Dict[str, BaseProvider] = {}
+        self._model_to_provider: Dict[str, str] = {}
+        self._initialize_providers()
     
-    def _init_browser(self):
-        """Initialize browser automation."""
-        try:
-            from src.browser import DeepSeekBrowser
-            self._browser = DeepSeekBrowser()
-        except Exception:
-            self.use_browser = False
+    def _initialize_providers(self):
+        """Initialize all available providers."""
+        # Initialize DeepSeek provider
+        deepseek_provider = DeepSeekProvider()
+        self._providers["deepseek"] = deepseek_provider
+        
+        for model in deepseek_provider.supported_models:
+            self._model_to_provider[model] = "deepseek"
+        
+        # Initialize Gemini provider
+        gemini_provider = GeminiProvider()
+        self._providers["gemini"] = gemini_provider
+        
+        for model in gemini_provider.supported_models:
+            self._model_to_provider[model] = "gemini"
+        
+        logger.info(f"Initialized providers: {list(self._providers.keys())}")
+        logger.info(f"Model mappings: {self._model_to_provider}")
     
-    async def start(self):
-        """Start browser and optionally wait for login."""
-        if not self._browser:
-            self._init_browser()
+    def get_provider_by_model(self, model: str) -> BaseProvider:
+        """Get provider instance for given model."""
+        if model not in self._model_to_provider:
+            supported = list(self._model_to_provider.keys())
+            raise ValueError(
+                f"Unknown model: {model}. Supported models: {', '.join(supported)}"
+            )
         
-        if self._browser:
-            await self._browser.start(headless=config.browser.headless)
+        provider_key = self._model_to_provider[model]
+        return self._providers[provider_key]
     
-    async def chat(
-        self,
-        messages: List[ChatMessage],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
-        conversation_id: Optional[str] = None,
-        create_new: bool = True,
-        thinking: Optional[dict] = None
-    ) -> dict:
-        """Send chat request and return response.
-        
-        Returns:
-            dict with keys:
-                - 'content': final answer
-                - 'reasoning_content': thinking process (if thinking mode enabled)
-                - 'full_response': combined response
-        """
-        
-        if not self.use_browser or not self._browser:
-            raise Exception("Browser mode not available")
-        
-        user_prompt = ""
-        for msg in reversed(messages):
-            if msg.role == "user":
-                user_prompt = msg.content
-                break
-        
-        if not user_prompt:
-            raise Exception("No user message found")
-        
-        response = await self._browser.send_message(
-            user_prompt, 
-            conversation_id=conversation_id, 
-            create_new=create_new,
-            thinking=thinking
-        )
-        
-        return response
+    def get_all_models(self) -> List[str]:
+        """Get all supported models."""
+        return list(self._model_to_provider.keys())
     
-    async def chat_streaming(
-        self,
-        messages: List[ChatMessage],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        conversation_id: Optional[str] = None,
-        create_new: bool = True,
-        thinking: Optional[dict] = None
-    ) -> AsyncGenerator[str, None]:
-        """Send streaming chat request."""
-        
-        if not self.use_browser or not self._browser:
-            raise Exception("Browser mode not available")
-        
-        user_prompt = ""
-        for msg in reversed(messages):
-            if msg.role == "user":
-                user_prompt = msg.content
-                break
-        
-        if not user_prompt:
-            raise Exception("No user message found")
-        
-        async for chunk in self._browser.send_message_streaming(
-            user_prompt, 
-            conversation_id=conversation_id, 
-            create_new=create_new,
-            thinking=thinking
-        ):
-            yield chunk
+    async def start_all(self):
+        """Start all providers."""
+        for name, provider in self._providers.items():
+            try:
+                await provider.start()
+                logger.info(f"Started provider: {name}")
+            except Exception as e:
+                logger.error(f"Failed to start provider {name}: {e}")
     
-    async def close(self):
-        """Close the browser."""
-        if self._browser:
-            await self._browser.close()
+    async def close_all(self):
+        """Close all providers."""
+        for name, provider in self._providers.items():
+            try:
+                await provider.close()
+                logger.info(f"Closed provider: {name}")
+            except Exception as e:
+                logger.error(f"Error closing provider {name}: {e}")
 
 
-proxy = DeepSeekProxy(use_browser=True)
+# Global router instance
+router = ProxyRouter()

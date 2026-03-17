@@ -15,6 +15,12 @@ class DeepSeekConfig(BaseModel):
     user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
 
+class GeminiConfig(BaseModel):
+    base_url: str = "https://gemini.google.com"
+    chrome_path: Optional[str] = None
+    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+
+
 class BrowserConfig(BaseModel):
     use_browser: bool = False
     headless: bool = True
@@ -34,6 +40,7 @@ class BrowserConfig(BaseModel):
 class Config(BaseModel):
     server: ServerConfig = ServerConfig()
     deepseek: DeepSeekConfig = DeepSeekConfig()
+    gemini: GeminiConfig = GeminiConfig()
     browser: BrowserConfig = BrowserConfig()
 
 
