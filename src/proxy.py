@@ -3,12 +3,13 @@ import asyncio
 from typing import List, AsyncGenerator, Optional
 from src.models import ChatMessage
 from src.config import config
+from src.constants import DEEPSEEK_BASE_URL
 
 
 class DeepSeekProxy:
     """Proxy to interact with DeepSeek using browser automation."""
     
-    def __init__(self, base_url: str = "https://chat.deepseek.com", use_browser: bool = True):
+    def __init__(self, base_url: str = DEEPSEEK_BASE_URL, use_browser: bool = True):
         self.base_url = base_url
         self._browser = None
         self.use_browser = use_browser

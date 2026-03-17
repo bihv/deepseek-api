@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
+from src.constants import DEEPSEEK_BASE_URL
 
 
 class ServerConfig(BaseModel):
@@ -10,7 +11,7 @@ class ServerConfig(BaseModel):
 
 
 class DeepSeekConfig(BaseModel):
-    base_url: str = "https://chat.deepseek.com"
+    base_url: str = DEEPSEEK_BASE_URL
 
 
 class BrowserConfig(BaseModel):

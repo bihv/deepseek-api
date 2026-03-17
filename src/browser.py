@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, AsyncGenerator
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from src.models import ChatMessage
 from src.config import config
+from src.constants import DEEPSEEK_BASE_URL, DEEPSEEK_CONVERSATION_URL
 
 
 class DeepSeekBrowser:
@@ -34,7 +35,7 @@ class DeepSeekBrowser:
         self.page = await self.context.new_page()
         
         # Use longer timeout and less strict wait strategy for reliability
-        await self.page.goto('https://chat.deepseek.com', wait_until='domcontentloaded', timeout=60000)
+        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded', timeout=60000)
     
     async def wait_for_login(self, timeout: int = 120):
         """Wait for user to manually login."""
@@ -72,7 +73,7 @@ class DeepSeekBrowser:
         
         if conversation_id:
             try:
-                await self.page.goto(f'https://chat.deepseek.com/a/chat/s/{conversation_id}', wait_until='domcontentloaded')
+                await self.page.goto(f'{DEEPSEEK_CONVERSATION_URL}/{conversation_id}', wait_until='domcontentloaded')
                 await asyncio.sleep(0.3)
                 return True
             except:
@@ -99,7 +100,7 @@ class DeepSeekBrowser:
             except:
                 continue
         
-        await self.page.goto('https://chat.deepseek.com', wait_until='domcontentloaded')
+        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded')
         await asyncio.sleep(0.3)
         return True
     
@@ -214,7 +215,7 @@ class DeepSeekBrowser:
         """Extract conversation_id from current URL."""
         url = await self.page.evaluate("() => window.location.href")
         
-        # Pattern: https://chat.deepseek.com/a/chat/s/{conversation_id}
+        # Pattern: {DEEPSEEK_CONVERSATION_URL}/{conversation_id}
         match = re.search(r'/a/chat/s/([a-zA-Z0-9_-]+)', url)
         if match:
             return match.group(1)
