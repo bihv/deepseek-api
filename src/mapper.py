@@ -11,6 +11,7 @@ from src.models import (
     Delta,
     Usage,
 )
+from src.tokenizer import count_messages_and_response
 
 
 def generate_id() -> str:
@@ -56,27 +57,49 @@ def map_messages_to_deepseek(messages: List[ChatMessage]) -> List[Dict[str, Any]
 def map_to_openai_response(
     content: str,
     model: str = "deepseek-chat",
-    prompt_tokens: int = 0,
-    completion_tokens: int = 0,
-    reasoning_content: Optional[str] = None
+    reasoning_content: Optional[str] = None,
+    thinking_time: Optional[int] = None,
+    messages: Optional[List[ChatMessage]] = None,
+    conversation_id: Optional[str] = None
 ) -> ChatCompletionResponse:
     """Map DeepSeek response to OpenAI completion response."""
+    # Dynamic model name: base is "deepseek-chat", add "deepseek-reasoning" if thinking enabled
+    final_model = model
+    if reasoning_content is not None:
+        final_model = f"{model}-reasoning"
+    
+    # Calculate usage if messages provided
+    usage = Usage()
+    if messages:
+        token_counts = count_messages_and_response(
+            messages=messages,
+            response_content=content,
+            reasoning_content=reasoning_content
+        )
+        usage = Usage(
+            prompt_tokens=token_counts["prompt_tokens"],
+            completion_tokens=token_counts["completion_tokens"],
+            total_tokens=token_counts["total_tokens"]
+        )
+    
     return ChatCompletionResponse(
         id=generate_id(),
         created=int(time.time()),
-        model=model,
+        model=final_model,
         choices=[
             Choice(
                 index=0,
-                message=Message(role="assistant", content=content, reasoning_content=reasoning_content),
+                message=Message(
+                    role="assistant", 
+                    content=content, 
+                    reasoning_content=reasoning_content,
+                    thinking_time=thinking_time
+                ),
                 finish_reason="stop"
             )
         ],
-        usage=Usage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens
-        )
+        usage=usage,
+        conversation_id=conversation_id
     )
 
 

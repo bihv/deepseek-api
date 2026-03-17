@@ -144,6 +144,7 @@ class DeepSeekBrowser:
         await self.page.evaluate("""() => {
             window.__deepseekThinking = '';
             window.__deepseekAnswer = '';
+            window.__deepseekThinkingTime = 0;
             window.__deepseekThinkingChunks = [];
             window.__deepseekAnswerChunks = [];
             
@@ -157,6 +158,15 @@ class DeepSeekBrowser:
                 // Get thinking content
                 const thinkEl = lastMsg.querySelector('[class*="ds-think-content"]');
                 window.__deepseekThinking = thinkEl ? thinkEl.innerText : '';
+                
+                // Get thinking time (e.g., "Thought for 2 seconds")
+                const thinkTimeEl = lastMsg.querySelector('span[class*="_5255ff8"]');
+                if (thinkTimeEl) {
+                    const match = thinkTimeEl.innerText.match(/Thought for (\\d+) seconds?/);
+                    if (match) {
+                        window.__deepseekThinkingTime = parseInt(match[1], 10);
+                    }
+                }
                 
                 // Get answer content (all markdown outside think content)
                 const allMarkdown = lastMsg.querySelectorAll('.ds-markdown, [class*="ds-markdown"]');
@@ -196,8 +206,19 @@ class DeepSeekBrowser:
         """Get thinking and answer from DOM observer (real-time during streaming)."""
         return await self.page.evaluate("""() => ({
             thinking: window.__deepseekThinking || '',
-            answer: window.__deepseekAnswer || ''
+            answer: window.__deepseekAnswer || '',
+            thinking_time: window.__deepseekThinkingTime || 0
         })""")
+    
+    async def _get_conversation_id(self) -> Optional[str]:
+        """Extract conversation_id from current URL."""
+        url = await self.page.evaluate("() => window.location.href")
+        
+        # Pattern: https://chat.deepseek.com/a/chat/s/{conversation_id}
+        match = re.search(r'/a/chat/s/([a-zA-Z0-9_-]+)', url)
+        if match:
+            return match.group(1)
+        return None
     
     async def _cleanup_dom_observer(self):
         """Cleanup MutationObserver."""
@@ -227,12 +248,13 @@ class DeepSeekBrowser:
         
         # Handle DeepThink mode
         thinking_enabled = thinking and thinking.get("type") == "enabled"
+        thinking_disabled = thinking and thinking.get("type") == "disabled"
+        
         if thinking_enabled:
             await self._toggle_deepthink(True)
-            # Add {{r1}} tag to enable reasoning mode
-            message = f"{{{{r1}}}}{message}"
-        else:
+        elif thinking_disabled:
             await self._toggle_deepthink(False)
+        # If thinking is null, None, or empty string, don't change the toggle state
         
         chat_input = None
         selectors = [
@@ -263,10 +285,19 @@ class DeepSeekBrowser:
         # Cleanup observer
         await self._cleanup_dom_observer()
         
+        # Only return reasoning content if deep think was explicitly enabled
+        reasoning = result.get("thinking", "") if thinking_enabled else None
+        thinking_time = result.get("thinking_time") if thinking_enabled else None
+        
+        # Get conversation_id from URL after response completes
+        conversation_id = await self._get_conversation_id()
+        
         return {
             "content": result.get("answer", ""),
-            "reasoning_content": result.get("thinking", ""),
-            "full_response": result.get("answer", "") or result.get("thinking", "")
+            "reasoning_content": reasoning,
+            "thinking_time": thinking_time,
+            "full_response": result.get("answer", "") or result.get("thinking", ""),
+            "conversation_id": conversation_id
         }
     
     async def _wait_for_completion(self, timeout: int = 60):
@@ -298,12 +329,14 @@ class DeepSeekBrowser:
             await self.navigate_to_conversation(conversation_id, create_new)
         
         # Handle DeepThink mode
-        if thinking and thinking.get("type") == "enabled":
+        thinking_enabled = thinking and thinking.get("type") == "enabled"
+        thinking_disabled = thinking and thinking.get("type") == "disabled"
+        
+        if thinking_enabled:
             await self._toggle_deepthink(True)
-            # Add {{r1}} tag to enable reasoning mode
-            message = f"{{{{r1}}}}{message}"
-        else:
+        elif thinking_disabled:
             await self._toggle_deepthink(False)
+        # If thinking is null, None, or empty string, don't change the toggle state
         
         chat_input = None
         selectors = [

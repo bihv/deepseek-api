@@ -33,6 +33,7 @@ class Message(BaseModel):
     role: str = "assistant"
     content: str
     reasoning_content: Optional[str] = None  # Thinking/reasoning process
+    thinking_time: Optional[int] = None  # Thinking time in seconds
 
 
 class Choice(BaseModel):
@@ -48,6 +49,7 @@ class ChatCompletionResponse(BaseModel):
     model: str = "deepseek-chat"
     choices: List[Choice]
     usage: Usage = Usage()
+    conversation_id: Optional[str] = None  # DeepSeek conversation ID from URL
 
 
 class Delta(BaseModel):

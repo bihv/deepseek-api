@@ -69,13 +69,16 @@ async def chat_completions(request: ChatCompletionRequest):
         # Handle both old string response and new dict response
         content = response.get("content", response) if isinstance(response, dict) else response
         reasoning_content = response.get("reasoning_content") if isinstance(response, dict) else None
+        thinking_time = response.get("thinking_time") if isinstance(response, dict) else None
+        conversation_id = response.get("conversation_id") if isinstance(response, dict) else None
         
         return map_to_openai_response(
             content=content,
             model=request.model,
-            prompt_tokens=10,
-            completion_tokens=len(content.split()) if content else 0,
-            reasoning_content=reasoning_content
+            reasoning_content=reasoning_content,
+            thinking_time=thinking_time,
+            messages=request.messages,
+            conversation_id=conversation_id
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
