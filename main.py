@@ -56,19 +56,26 @@ async def chat_completions(request: ChatCompletionRequest):
         return StreamingResponse(stream_chat(request), media_type="text/event-stream")
     
     try:
-        content = await proxy.chat(
+        response = await proxy.chat(
             messages=request.messages,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             stream=False,
             conversation_id=request.conversation_id,
-            create_new=request.create_new
+            create_new=request.create_new,
+            thinking=request.thinking
         )
+        
+        # Handle both old string response and new dict response
+        content = response.get("content", response) if isinstance(response, dict) else response
+        reasoning_content = response.get("reasoning_content") if isinstance(response, dict) else None
+        
         return map_to_openai_response(
             content=content,
             model=request.model,
             prompt_tokens=10,
-            completion_tokens=len(content.split())
+            completion_tokens=len(content.split()) if content else 0,
+            reasoning_content=reasoning_content
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -84,7 +91,8 @@ async def stream_chat(request: ChatCompletionRequest):
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             conversation_id=request.conversation_id,
-            create_new=request.create_new
+            create_new=request.create_new,
+            thinking=request.thinking
         ):
             chunk = chunk_builder.build(content=chunk_content)
             yield f"data: {chunk.model_dump_json()}\n\n"

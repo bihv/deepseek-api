@@ -31,7 +31,8 @@ class DeepSeekBrowser:
         
         self.page = await self.context.new_page()
         
-        await self.page.goto('https://chat.deepseek.com', wait_until='networkidle')
+        # Use longer timeout and less strict wait strategy for reliability
+        await self.page.goto('https://chat.deepseek.com', wait_until='domcontentloaded', timeout=60000)
         
     async def wait_for_login(self, timeout: int = 120):
         """Wait for user to manually login."""
@@ -100,13 +101,65 @@ class DeepSeekBrowser:
         await asyncio.sleep(1)
         return True
     
-    async def send_message(self, message: str, conversation_id: str = None, create_new: bool = True) -> str:
-        """Send a message and return the response."""
+    async def _toggle_deepthink(self, enable: bool = True):
+        """Toggle DeepThink/Reasoning mode on the UI."""
+        if not self.page:
+            return
+        
+        # Try to find and click the DeepThink toggle
+        # Common selectors for the thinking mode toggle
+        toggle_selectors = [
+            '[class*="think"] button',
+            '[class*="reasoning"] button',
+            'button:has-text("Think")',
+            'button:has-text("DeepThink")',
+            '[class*="toggle"]:has-text("Think")',
+            '[role="switch"]:has-text("Think")',
+            'button[aria-label*="think"]',
+            '[class*="thinking"] [class*="toggle"]',
+        ]
+        
+        for sel in toggle_selectors:
+            try:
+                toggle = await self.page.query_selector(sel)
+                if toggle:
+                    # Check current state
+                    is_checked = await toggle.get_attribute('aria-checked')
+                    should_be_on = 'true' if enable else 'false'
+                    
+                    if is_checked != should_be_on:
+                        await toggle.click()
+                        await asyncio.sleep(0.5)
+                    return
+            except:
+                continue
+        
+        # If no toggle found, log for debugging
+        print(f"[Browser] DeepThink toggle not found, enable={enable}")
+    
+    async def send_message(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: dict = None) -> dict:
+        """Send a message and return the response.
+        
+        Returns:
+            dict with keys:
+                - 'content': final answer
+                - 'reasoning_content': thinking process (if thinking mode enabled)
+                - 'full_response': combined response (for backward compatibility)
+        """
         if not self.page:
             raise Exception("Browser not started")
         
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
+        
+        # Handle DeepThink mode
+        thinking_enabled = thinking and thinking.get("type") == "enabled"
+        if thinking_enabled:
+            await self._toggle_deepthink(True)
+            # Add {{r1}} tag to enable reasoning mode
+            message = f"{{{{r1}}}}{message}"
+        else:
+            await self._toggle_deepthink(False)
         
         chat_input = None
         selectors = [
@@ -128,19 +181,53 @@ class DeepSeekBrowser:
         await asyncio.sleep(0.5)
         await chat_input.press('Enter')
         
-        await asyncio.sleep(10)
+        # Wait for AI to complete by checking UI
+        await self._wait_for_completion(timeout=60)
         
-        response = await self._extract_response()
+        # Extract thinking and answer separately
+        result = await self._extract_thinking_and_response()
         
-        return response
+        return {
+            "content": result.get("answer", ""),
+            "reasoning_content": result.get("thinking", ""),
+            "full_response": result.get("answer", "") or result.get("thinking", "")
+        }
     
-    async def send_message_streaming(self, message: str, conversation_id: str = None, create_new: bool = True):
+    async def _wait_for_completion(self, timeout: int = 60):
+        """Wait for AI to finish generating response by checking UI."""
+        start_time = asyncio.get_event_loop().time()
+        
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            is_generating = await self._is_ai_generating()
+            if not is_generating:
+                # Wait more to ensure content is fully rendered
+                await asyncio.sleep(3)
+                
+                # Get current response and wait a bit more
+                await asyncio.sleep(2)
+                
+                # Double check - response should be stable
+                if not await self._is_ai_generating():
+                    return
+            await asyncio.sleep(1)
+        
+        # Timeout reached
+    
+    async def send_message_streaming(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: dict = None):
         """Send a message and yield response chunks as they arrive."""
         if not self.page:
             raise Exception("Browser not started")
         
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
+        
+        # Handle DeepThink mode
+        if thinking and thinking.get("type") == "enabled":
+            await self._toggle_deepthink(True)
+            # Add {{r1}} tag to enable reasoning mode
+            message = f"{{{{r1}}}}{message}"
+        else:
+            await self._toggle_deepthink(False)
         
         chat_input = None
         selectors = [
@@ -163,10 +250,14 @@ class DeepSeekBrowser:
         await chat_input.press('Enter')
         
         previous_response = ""
-        max_wait_time = 120
+        max_wait_time = 120  # Safety net fallback
         start_time = asyncio.get_event_loop().time()
+        stable_count = 0  # Track stable responses
         
         while True:
+            # Check if AI is still generating by inspecting the UI
+            is_generating = await self._is_ai_generating()
+            
             current_response = await self._extract_response_streaming()
             
             if current_response and len(current_response) > len(previous_response):
@@ -174,18 +265,53 @@ class DeepSeekBrowser:
                 if new_chunk.strip():
                     yield new_chunk
                 previous_response = current_response
+                stable_count = 0  # Reset stability counter
+            else:
+                stable_count += 1
             
-            await asyncio.sleep(1)
-            
-            current_response_check = await self._extract_response_streaming()
-            if current_response_check == previous_response:
+            # Only check for completion if AI is done generating
+            if not is_generating:
+                # Wait more to ensure response is fully rendered
                 await asyncio.sleep(2)
-                final_check = await self._extract_response_streaming()
-                if final_check == previous_response:
-                    break
+                
+                # Double check AI is not generating
+                still_generating = await self._is_ai_generating()
+                if not still_generating:
+                    # Verify response is stable for a few checks
+                    if stable_count >= 3:
+                        # Final verification
+                        await asyncio.sleep(1)
+                        final_check = await self._extract_response_streaming()
+                        if final_check == previous_response:
+                            break
             
             if asyncio.get_event_loop().time() - start_time > max_wait_time:
                 break
+    
+    async def _is_ai_generating(self) -> bool:
+        """Check if AI is still generating response by inspecting the UI."""
+        return await self.page.evaluate("""() => {
+            // Find send button with the specific SVG path
+            // SVG path: M8.3125 0.981587...
+            const sendButtonSvg = document.querySelector('div[class*="ds-icon-button"][role="button"] svg path[d="M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z"]');
+            
+            // If send button with that SVG exists
+            if (sendButtonSvg) {
+                // Get the parent button element
+                const sendButton = sendButtonSvg.closest('div[class*="ds-icon-button"]');
+                if (sendButton) {
+                    const isDisabled = sendButton.classList.contains('ds-icon-button--disabled') || 
+                                       sendButton.getAttribute('aria-disabled') === 'true' ||
+                                       sendButton.getAttribute('disabled') !== null;
+                    
+                    // Disabled = done generating, Not disabled = still generating
+                    return !isDisabled;
+                }
+            }
+            
+            // Default: assume still generating if can't find send button
+            return true;
+        }""")
     
     async def _extract_response_streaming(self) -> str:
         """Extract the latest assistant response for streaming."""
@@ -197,8 +323,55 @@ class DeepSeekBrowser:
             }
             return '';
         }""")
-        
-        return response
+    
+    async def _extract_thinking_and_response(self) -> dict:
+        """Extract thinking (reasoning) and final answer separately from the UI."""
+        return await self.page.evaluate("""() => {
+            const result = {
+                thinking: '',
+                answer: ''
+            };
+            
+            // Find all message containers (last assistant message)
+            const messages = document.querySelectorAll('[class*="message"]');
+            if (messages.length === 0) {
+                return result;
+            }
+            
+            const lastMsg = messages[messages.length - 1];
+            
+            // Extract thinking content (inside ds-think-content)
+            const thinkingEl = lastMsg.querySelector('[class*="ds-think-content"]');
+            if (thinkingEl) {
+                result.thinking = thinkingEl.innerText || '';
+            }
+            
+            // Extract answer - ds-markdown elements that are NOT inside ds-think-content
+            const allMarkdown = lastMsg.querySelectorAll('.ds-markdown, [class*="ds-markdown"]');
+            const answerParts = [];
+            
+            allMarkdown.forEach(el => {
+                // Check if this markdown is inside think content
+                const parentThink = el.closest('[class*="ds-think-content"]');
+                if (!parentThink) {
+                    // This is the answer part
+                    answerParts.push(el.innerText);
+                }
+            });
+            
+            result.answer = answerParts.join('\\n\\n');
+            
+            // Fallback: if no thinking found, treat everything as answer
+            if (!result.thinking && result.answer) {
+                // Check if there's a "Thought for X seconds" indicator
+                const thinkIndicator = lastMsg.querySelector('[class*="think"]');
+                if (!thinkIndicator) {
+                    result.answer = lastMsg.innerText;
+                }
+            }
+            
+            return result;
+        }""")
     
     async def _extract_response(self) -> str:
         """Extract the latest assistant response."""

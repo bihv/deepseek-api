@@ -19,6 +19,7 @@ class ChatCompletionRequest(BaseModel):
     stop: Optional[List[str]] = None
     conversation_id: Optional[str] = None  # From DeepSeek chat URL
     create_new: bool = True  # Create new conversation if no conversation_id
+    thinking: Optional[dict] = None  # DeepThink mode: {"type": "enabled"} or None
 
 
 # Response models
@@ -31,6 +32,7 @@ class Usage(BaseModel):
 class Message(BaseModel):
     role: str = "assistant"
     content: str
+    reasoning_content: Optional[str] = None  # Thinking/reasoning process
 
 
 class Choice(BaseModel):

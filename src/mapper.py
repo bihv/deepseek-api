@@ -57,7 +57,8 @@ def map_to_openai_response(
     content: str,
     model: str = "deepseek-chat",
     prompt_tokens: int = 0,
-    completion_tokens: int = 0
+    completion_tokens: int = 0,
+    reasoning_content: Optional[str] = None
 ) -> ChatCompletionResponse:
     """Map DeepSeek response to OpenAI completion response."""
     return ChatCompletionResponse(
@@ -67,7 +68,7 @@ def map_to_openai_response(
         choices=[
             Choice(
                 index=0,
-                message=Message(role="assistant", content=content),
+                message=Message(role="assistant", content=content, reasoning_content=reasoning_content),
                 finish_reason="stop"
             )
         ],

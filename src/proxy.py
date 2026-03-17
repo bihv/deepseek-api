@@ -39,9 +39,17 @@ class DeepSeekProxy:
         max_tokens: Optional[int] = None,
         stream: bool = False,
         conversation_id: Optional[str] = None,
-        create_new: bool = True
-    ) -> str:
-        """Send chat request and return response content."""
+        create_new: bool = True,
+        thinking: Optional[dict] = None
+    ) -> dict:
+        """Send chat request and return response.
+        
+        Returns:
+            dict with keys:
+                - 'content': final answer
+                - 'reasoning_content': thinking process (if thinking mode enabled)
+                - 'full_response': combined response
+        """
         
         if not self.use_browser or not self._browser:
             raise Exception("Browser mode not available")
@@ -55,7 +63,12 @@ class DeepSeekProxy:
         if not user_prompt:
             raise Exception("No user message found")
         
-        response = await self._browser.send_message(user_prompt, conversation_id=conversation_id, create_new=create_new)
+        response = await self._browser.send_message(
+            user_prompt, 
+            conversation_id=conversation_id, 
+            create_new=create_new,
+            thinking=thinking
+        )
         
         return response
     
@@ -65,7 +78,8 @@ class DeepSeekProxy:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         conversation_id: Optional[str] = None,
-        create_new: bool = True
+        create_new: bool = True,
+        thinking: Optional[dict] = None
     ) -> AsyncGenerator[str, None]:
         """Send streaming chat request."""
         
@@ -84,7 +98,8 @@ class DeepSeekProxy:
         async for chunk in self._browser.send_message_streaming(
             user_prompt, 
             conversation_id=conversation_id, 
-            create_new=create_new
+            create_new=create_new,
+            thinking=thinking
         ):
             yield chunk
     
