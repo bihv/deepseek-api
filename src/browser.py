@@ -72,8 +72,8 @@ class DeepSeekBrowser:
         
         if conversation_id:
             try:
-                await self.page.goto(f'https://chat.deepseek.com/a/chat/s/{conversation_id}', wait_until='networkidle')
-                await asyncio.sleep(2)
+                await self.page.goto(f'https://chat.deepseek.com/a/chat/s/{conversation_id}', wait_until='domcontentloaded')
+                await asyncio.sleep(0.3)
                 return True
             except:
                 pass
@@ -94,13 +94,13 @@ class DeepSeekBrowser:
                 btn = await self.page.query_selector(sel)
                 if btn:
                     await btn.click()
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)
                     return True
             except:
                 continue
         
-        await self.page.goto('https://chat.deepseek.com', wait_until='networkidle')
-        await asyncio.sleep(1)
+        await self.page.goto('https://chat.deepseek.com', wait_until='domcontentloaded')
+        await asyncio.sleep(0.3)
         return True
     
     async def _toggle_deepthink(self, enable: bool = True):
@@ -273,7 +273,7 @@ class DeepSeekBrowser:
             raise Exception("Could not find chat input")
         
         await chat_input.fill(message)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         await chat_input.press('Enter')
         
         # Wait for AI to complete by checking UI
@@ -303,20 +303,17 @@ class DeepSeekBrowser:
     async def _wait_for_completion(self, timeout: int = 60):
         """Wait for AI to finish generating response by checking UI."""
         start_time = asyncio.get_event_loop().time()
+        check_interval = 0.3  # Check every 300ms for faster response
+        stable_count = 0
         
         while asyncio.get_event_loop().time() - start_time < timeout:
             is_generating = await self._is_ai_generating()
             if not is_generating:
-                # Wait more to ensure content is fully rendered
-                await asyncio.sleep(3)
-                
-                # Get current response and wait a bit more
-                await asyncio.sleep(2)
-                
-                # Double check - response should be stable
+                # Quick stability check - 2 consecutive checks
+                await asyncio.sleep(0.5)
                 if not await self._is_ai_generating():
                     return
-            await asyncio.sleep(1)
+            await asyncio.sleep(check_interval)
         
         # Timeout reached
     
@@ -362,6 +359,7 @@ class DeepSeekBrowser:
         max_wait_time = 120  # Safety net fallback
         start_time = asyncio.get_event_loop().time()
         stable_count = 0  # Track stable responses
+        check_interval = 0.2  # Check every 200ms for faster detection
         
         while True:
             # Check if AI is still generating by inspecting the UI
@@ -380,19 +378,13 @@ class DeepSeekBrowser:
             
             # Only check for completion if AI is done generating
             if not is_generating:
-                # Wait more to ensure response is fully rendered
-                await asyncio.sleep(2)
+                # Quick stability check - just 1 check
+                await asyncio.sleep(0.3)
                 
                 # Double check AI is not generating
                 still_generating = await self._is_ai_generating()
-                if not still_generating:
-                    # Verify response is stable for a few checks
-                    if stable_count >= 3:
-                        # Final verification
-                        await asyncio.sleep(1)
-                        final_check = await self._extract_response_streaming()
-                        if final_check == previous_response:
-                            break
+                if not still_generating and stable_count >= 1:
+                    break
             
             if asyncio.get_event_loop().time() - start_time > max_wait_time:
                 break
