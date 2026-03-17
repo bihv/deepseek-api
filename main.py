@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import asynccontextmanager
 import asyncio
 import json
 import logging
+from typing import Optional
 
 from src.config import config
 from src.models import ChatCompletionRequest, ChatCompletionResponse, ModelList, Model
@@ -46,6 +48,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+security = HTTPBearer(auto_error=False)
+
+async def verify_api_key(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    if config.server.api_key:
+        if not credentials or credentials.credentials != config.server.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or missing API Key",
+            )
+    return credentials.credentials if credentials else None
+
+
 
 @app.get("/health")
 async def health_check():
@@ -57,7 +71,7 @@ async def health_check():
     }
 
 
-@app.get("/v1/models")
+@app.get("/v1/models", dependencies=[Depends(verify_api_key)])
 async def list_models():
     """List available models."""
     models = []
@@ -67,7 +81,7 @@ async def list_models():
     return ModelList(data=models)
 
 
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse, dependencies=[Depends(verify_api_key)])
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint."""
     # Get provider based on model
@@ -137,7 +151,7 @@ async def stream_chat(request: ChatCompletionRequest, provider):
         yield f"data: {json.dumps(error)}\n\n"
 
 
-@app.get("/session/status")
+@app.get("/session/status", dependencies=[Depends(verify_api_key)])
 async def session_status():
     """Get session status."""
     return {
@@ -146,7 +160,7 @@ async def session_status():
     }
 
 
-@app.post("/session/refresh")
+@app.post("/session/refresh", dependencies=[Depends(verify_api_key)])
 async def refresh_session(provider: str = "deepseek"):
     """Force refresh session."""
     if provider == "deepseek":

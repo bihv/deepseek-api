@@ -53,7 +53,8 @@ Edit `config.json` to configure the application:
 {
     "server": {
         "host": "0.0.0.0",
-        "port": 8000
+        "port": 8000,
+        "api_key": "sk-ai-web-proxy-key"
     },
     "deepseek": {
         "enabled": true,
@@ -83,6 +84,7 @@ Edit `config.json` to configure the application:
 |---------|-------------|---------|
 | `server.host` | Server bind address | `0.0.0.0` |
 | `server.port` | Server port | `8000` |
+| `server.api_key` | API Key for authenticating requests. Set to null to disable. | `sk-ai-web-proxy-key` |
 | `deepseek.enabled` | Enable/start the DeepSeek provider | `true` |
 | `deepseek.base_url` | DeepSeek web chat URL | `https://chat.deepseek.com` |
 | `gemini.enabled` | Enable/start the Gemini provider | `true` |
@@ -116,6 +118,7 @@ Send a chat completion request (non-streaming):
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
@@ -131,6 +134,7 @@ Send a streaming chat completion request:
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
@@ -147,7 +151,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 List all available and enabled models dynamically:
 
 ```bash
-curl http://localhost:8000/v1/models
+curl -H "Authorization: Bearer sk-ai-web-proxy-key" http://localhost:8000/v1/models
 ```
 
 #### Continue Conversation (DeepSeek Only)
@@ -157,6 +161,7 @@ To continue an existing conversation on DeepSeek, provide the `conversation_id` 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
@@ -175,7 +180,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="dummy",  # Not required for this proxy
+    api_key="sk-ai-web-proxy-key",  # Must match server.api_key in config.json
     base_url="http://localhost:8000/v1"
 )
 
@@ -195,6 +200,7 @@ print(response.choices[0].message.content)
 # Non-streaming request
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
@@ -205,6 +211,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 # Streaming request
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [
@@ -216,6 +223,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 # With thinking mode enabled (DeepSeek Only)
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-ai-web-proxy-key" \
   -d '{
     "model": "deepseek-chat",
     "messages": [

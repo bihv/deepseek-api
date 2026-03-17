@@ -7,6 +7,7 @@ from typing import Optional, List
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
+    api_key: Optional[str] = None
 
 
 class DeepSeekConfig(BaseModel):
