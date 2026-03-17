@@ -7,7 +7,7 @@ import logging
 
 from src.config import config
 from src.models import ChatCompletionRequest, ChatCompletionResponse, ModelList, Model
-from src.proxy import proxy
+from src.proxy import router
 from src.session import session_manager
 from src.mapper import map_to_openai_response, generate_chunk, ChunkBuilder
 
@@ -33,17 +33,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     if config.browser.use_browser:
-        await proxy.start()
+        await router.start_all()
     
     yield
     
-    if proxy._browser:
-        await proxy.close()
+    await router.close_all()
 
 
 app = FastAPI(
-    title="DeepSeek API Proxy",
-    description="OpenAI-compatible API for DeepSeek web",
+    title="Multi-Provider AI Chat API",
+    description="OpenAI-compatible API for DeepSeek and Gemini web",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -62,19 +61,27 @@ async def health_check():
 @app.get("/v1/models")
 async def list_models():
     """List available models."""
-    return ModelList(
-        data=[Model(id="deepseek-chat", object="model", created=1700000000, owned_by="deepseek")]
-    )
+    models = []
+    for model_id in router.get_all_models():
+        provider = router._model_to_provider.get(model_id, "unknown")
+        models.append(Model(id=model_id, object="model", created=1700000000, owned_by=provider))
+    return ModelList(data=models)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint."""
+    # Get provider based on model
+    try:
+        provider = router.get_provider_by_model(request.model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
     if request.stream:
-        return StreamingResponse(stream_chat(request), media_type="text/event-stream")
+        return StreamingResponse(stream_chat(request, provider), media_type="text/event-stream")
     
     try:
-        response = await proxy.chat(
+        response = await provider.chat(
             messages=request.messages,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
@@ -98,16 +105,18 @@ async def chat_completions(request: ChatCompletionRequest):
             messages=request.messages,
             conversation_id=conversation_id
         )
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def stream_chat(request: ChatCompletionRequest):
+async def stream_chat(request: ChatCompletionRequest, provider):
     """Stream chat responses."""
     try:
         chunk_builder = ChunkBuilder(model=request.model)
         
-        async for chunk_content in proxy.chat_streaming(
+        async for chunk_content in provider.chat_streaming(
             messages=request.messages,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
@@ -121,6 +130,9 @@ async def stream_chat(request: ChatCompletionRequest):
         final_chunk = chunk_builder.build(content="", finish_reason="stop")
         yield f"data: {final_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
+    except NotImplementedError as e:
+        error = {"error": {"message": str(e), "type": "not_implemented"}}
+        yield f"data: {json.dumps(error)}\n\n"
     except Exception as e:
         error = {"error": {"message": str(e), "type": "error"}}
         yield f"data: {json.dumps(error)}\n\n"
@@ -129,16 +141,22 @@ async def stream_chat(request: ChatCompletionRequest):
 @app.get("/session/status")
 async def session_status():
     """Get session status."""
-    return session_manager.get_status()
+    return {
+        "deepseek": session_manager.get_status(),
+        "gemini": {"available": True}
+    }
 
 
 @app.post("/session/refresh")
-async def refresh_session():
+async def refresh_session(provider: str = "deepseek"):
     """Force refresh session."""
-    success = await session_manager.refresh(config.deepseek.base_url)
-    if success:
-        return {"status": "success", "message": "Session refreshed"}
-    raise HTTPException(status_code=401, detail="Session refresh failed")
+    if provider == "deepseek":
+        success = await session_manager.refresh(config.deepseek.base_url)
+        if success:
+            return {"status": "success", "message": "DeepSeek session refreshed"}
+        raise HTTPException(status_code=401, detail="DeepSeek session refresh failed")
+    else:
+        raise HTTPException(status_code=400, detail=f"Session refresh for {provider} not supported")
 
 
 if __name__ == "__main__":
