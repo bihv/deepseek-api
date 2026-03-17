@@ -269,7 +269,7 @@ class DeepSeekBrowser:
             }
         }""")
     
-    async def send_message(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: dict = None) -> dict:
+    async def send_message(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: bool = False) -> dict:
         """Send a message and return the response.
         
         Returns:
@@ -290,14 +290,10 @@ class DeepSeekBrowser:
         await self._setup_dom_observer()
         
         # Handle DeepThink mode
-        thinking_enabled = thinking and thinking.get("type") == "enabled"
-        thinking_disabled = thinking and thinking.get("type") == "disabled"
-        
-        if thinking_enabled:
+        if thinking:
             await self._toggle_deepthink(True)
-        elif thinking_disabled:
+        else:
             await self._toggle_deepthink(False)
-        # If thinking is null, None, or empty string, don't change the toggle state
         
         chat_input = None
         selectors = [
@@ -329,8 +325,8 @@ class DeepSeekBrowser:
         await self._cleanup_dom_observer()
         
         # Only return reasoning content if deep think was explicitly enabled
-        reasoning = result.get("thinking", "") if thinking_enabled else None
-        thinking_time = result.get("thinking_time") if thinking_enabled else None
+        reasoning = result.get("thinking", "") if thinking else None
+        thinking_time = result.get("thinking_time") if thinking else None
         
         # Get conversation_id from URL after response completes
         conversation_id = await self._get_conversation_id()
@@ -360,7 +356,7 @@ class DeepSeekBrowser:
         
         # Timeout reached
     
-    async def send_message_streaming(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: dict = None):
+    async def send_message_streaming(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: bool = False):
         """Send a message and yield response chunks as they arrive."""
         if not self.page:
             raise Exception("Browser not started")
@@ -371,14 +367,10 @@ class DeepSeekBrowser:
             await self.navigate_to_conversation(conversation_id, create_new)
         
         # Handle DeepThink mode
-        thinking_enabled = thinking and thinking.get("type") == "enabled"
-        thinking_disabled = thinking and thinking.get("type") == "disabled"
-        
-        if thinking_enabled:
+        if thinking:
             await self._toggle_deepthink(True)
-        elif thinking_disabled:
+        else:
             await self._toggle_deepthink(False)
-        # If thinking is null, None, or empty string, don't change the toggle state
         
         chat_input = None
         selectors = [

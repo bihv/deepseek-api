@@ -23,7 +23,7 @@ class DeepSeekProvider(BaseProvider):
     def _init_browser(self):
         """Initialize browser automation."""
         try:
-            from src.browser import DeepSeekBrowser
+            from src.browser_deepseek import DeepSeekBrowser
             self._browser = DeepSeekBrowser()
         except Exception as e:
             logger.warning(f"Failed to initialize browser: {e}")
@@ -72,7 +72,7 @@ class DeepSeekProvider(BaseProvider):
         if not user_prompt:
             raise Exception("No user message found")
         
-        thinking = kwargs.get("thinking")
+        thinking = kwargs.get("thinking", False)
         
         response = await self._browser.send_message(
             user_prompt, 
@@ -105,7 +105,7 @@ class DeepSeekProvider(BaseProvider):
         if not user_prompt:
             raise Exception("No user message found")
         
-        thinking = kwargs.get("thinking")
+        thinking = kwargs.get("thinking", False)
         
         async for chunk in self._browser.send_message_streaming(
             user_prompt, 

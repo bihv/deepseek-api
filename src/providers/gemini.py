@@ -30,7 +30,7 @@ class GeminiProvider(BaseProvider):
     
     @property
     def supported_models(self) -> List[str]:
-        return ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"]
+        return ["gemini-3-flash"]
     
     @property
     def provider_name(self) -> str:
@@ -61,6 +61,13 @@ class GeminiProvider(BaseProvider):
         """Send chat request to Gemini."""
         if not self._use_browser or not self._browser:
             raise Exception("Gemini browser mode not available")
+            
+        thinking = kwargs.get("thinking", False)
+        if thinking:
+            raise ValueError("Gemini Flash models do not support thinking/reasoning mode.")
+            
+        if conversation_id:
+            raise ValueError("Gemini Web (unauthenticated) does not support conversation history. Please do not provide a conversation_id.")
         
         user_prompt = ""
         for msg in reversed(messages):
@@ -91,6 +98,13 @@ class GeminiProvider(BaseProvider):
         """Send streaming chat request to Gemini."""
         if not self._use_browser or not self._browser:
             raise Exception("Gemini browser mode not available")
+            
+        thinking = kwargs.get("thinking", False)
+        if thinking:
+            raise ValueError("Gemini Flash models do not support thinking/reasoning mode.")
+            
+        if conversation_id:
+            raise ValueError("Gemini Web (unauthenticated) does not support conversation history. Please do not provide a conversation_id.")
         
         user_prompt = ""
         for msg in reversed(messages):

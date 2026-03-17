@@ -61,15 +61,11 @@ async def health_check():
 @app.get("/v1/models")
 async def list_models():
     """List available models."""
-    return ModelList(
-        data=[
-            Model(id="deepseek-chat", object="model", created=1700000000, owned_by="deepseek"),
-            Model(id="gemini-2.0-flash", object="model", created=1700000000, owned_by="google"),
-            Model(id="gemini-2.0-flash-lite", object="model", created=1700000000, owned_by="google"),
-            Model(id="gemini-1.5-pro", object="model", created=1700000000, owned_by="google"),
-            Model(id="gemini-1.5-flash", object="model", created=1700000000, owned_by="google"),
-        ]
-    )
+    models = []
+    for model_id in router.get_all_models():
+        provider = router._model_to_provider.get(model_id, "unknown")
+        models.append(Model(id=model_id, object="model", created=1700000000, owned_by=provider))
+    return ModelList(data=models)
 
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)

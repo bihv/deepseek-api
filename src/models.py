@@ -19,7 +19,7 @@ class ChatCompletionRequest(BaseModel):
     stop: Optional[List[str]] = None
     conversation_id: Optional[str] = None  # From DeepSeek chat URL
     create_new: bool = True  # Create new conversation if no conversation_id
-    thinking: Optional[dict] = None  # DeepThink mode: {"type": "enabled"} or None
+    thinking: bool = False  # DeepThink mode: True/False
 
 
 # Response models

@@ -79,8 +79,11 @@ class GeminiBrowser:
             return True
         
         # Navigate to home to create new chat
-        await self.page.goto(self._base_url, wait_until='domcontentloaded')
-        await asyncio.sleep(0.3)
+        current_url = self.page.url
+        # If we are already at the base URL (home) or /app, we don't necessarily need to reload
+        if self._base_url not in current_url:
+            await self.page.goto(self._base_url, wait_until='domcontentloaded')
+            await asyncio.sleep(0.3)
         
         # Try to find and click "New Chat" button
         new_chat_selectors = [
@@ -95,7 +98,8 @@ class GeminiBrowser:
             try:
                 btn = await self.page.query_selector(sel)
                 if btn:
-                    await btn.click()
+                    # Use a short timeout so it doesn't hang for 30s if unclickable
+                    await btn.click(timeout=1000)
                     await asyncio.sleep(0.3)
                     logger.info("Created new conversation")
                     return True
@@ -130,15 +134,12 @@ class GeminiBrowser:
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
         
-        # Find chat input textarea - Gemini uses contenteditable div
+        # Find chat input - Gemini uses rich-textarea with contenteditable div
         chat_input = None
         selectors = [
             'rich-textarea div[contenteditable="true"]',
-            'div[contenteditable="true"][data-testid="prompt-input"]',
             'div[contenteditable="true"][role="textbox"]',
             'div[contenteditable="true"]',
-            'textarea[placeholder*="message"]',
-            'textarea[placeholder*="Ask"]',
         ]
         
         for sel in selectors:
@@ -155,24 +156,10 @@ class GeminiBrowser:
         await asyncio.sleep(0.1)
         
         # Find and click send button
-        send_button = None
-        send_selectors = [
-            'button[data-testid="send-button"]',
-            'button[aria-label="Send"]',
-            'button[type="submit"]',
-            'button:has(svg[d*="M8 8"])',
-            'button:has(svg[d*="m8 8"])',
-        ]
-        
-        for sel in send_selectors:
-            send_button = await self.page.query_selector(sel)
-            if send_button:
-                break
-        
+        send_button = await self.page.query_selector('button[aria-label="Send message"]')
         if send_button:
             await send_button.click()
         else:
-            # Try pressing Enter
             await chat_input.press('Enter')
         
         # Wait for AI to complete
@@ -191,64 +178,64 @@ class GeminiBrowser:
         }
     
     async def _wait_for_completion(self, timeout: int = 120):
-        """Wait for AI to finish generating response by checking UI."""
-        start_time = asyncio.get_event_loop().time()
-        check_interval = 0.5
+        """Wait for AI to finish generating response.
         
+        1. Wait for response container to appear
+        2. Wait for Stop response button to disappear and Microphone button to be visible
+        """
+        start_time = asyncio.get_event_loop().time()
+        
+        # Phase 1: Wait for response container to appear
         while asyncio.get_event_loop().time() - start_time < timeout:
-            is_generating = await self._is_ai_generating()
-            if not is_generating:
-                # Quick stability check
+            has_response = await self.page.evaluate("""() => {
+                return document.querySelectorAll('div[id^="model-response-message-content"]').length > 0;
+            }""")
+            if has_response:
+                break
+            await asyncio.sleep(0.3)
+        
+        # Phase 2: Wait for generation to complete
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            if not await self._is_ai_generating():
                 await asyncio.sleep(0.5)
                 if not await self._is_ai_generating():
                     return
-            await asyncio.sleep(check_interval)
+            await asyncio.sleep(0.5)
     
     async def _is_ai_generating(self) -> bool:
-        """Check if AI is still generating response by inspecting the UI."""
+        """Check if AI is still generating response.
+        
+        - Generating: button[aria-label='Stop response'] is present
+        - Done: button[aria-label='Microphone'] is visible (offsetParent !== null)
+        """
         return await self.page.evaluate("""() => {
-            // Check for stop button (appears while generating)
-            const stopButton = document.querySelector('button:has-text("Stop")');
-            if (stopButton) {
+            // If Stop response button exists, still generating
+            const stopBtn = document.querySelector('button[aria-label="Stop response"]');
+            if (stopBtn) {
                 return true;
             }
             
-            // Check for loading indicator
-            const loading = document.querySelector('[class*="loading"], [class*="generating"], [role="progressbar"]');
-            if (loading) {
-                return true;
+            // If Microphone button is visible, done generating
+            const micBtn = document.querySelector('button[aria-label="Microphone"]');
+            if (micBtn && micBtn.offsetParent !== null) {
+                return false;
             }
             
-            // Check for send button - if disabled, generation is in progress
-            const sendButton = document.querySelector('button[data-testid="send-button"]');
-            if (sendButton) {
-                const isDisabled = sendButton.hasAttribute('disabled');
-                return isDisabled;
-            }
-            
-            // Default: assume done if no clear indicators
-            return false;
+            // No clear signal yet, assume still generating
+            return true;
         }""")
     
     async def _extract_response(self) -> str:
         """Extract the latest assistant response."""
         return await self.page.evaluate("""() => {
-            // Try to find Gemini's response containers
-            // Gemini typically uses these class patterns
-            const responses = document.querySelectorAll('[class*="response"], [class*="message"], [class*="content"]');
-            
-            // Look for the last assistant message
-            for (let i = responses.length - 1; i >= 0; i--) {
-                const el = responses[i];
-                const text = el.innerText?.trim();
-                // Filter out user messages and very short texts
-                if (text && text.length > 20 && !text.includes('You:')) {
-                    return text;
-                }
+            const responses = document.querySelectorAll('div[id^="model-response-message-content"]');
+            if (responses.length > 0) {
+                // Get the last response (most recent)
+                const lastResponse = responses[responses.length - 1];
+                return lastResponse.innerText?.trim() || '';
             }
             
-            // Fallback: get all text content
-            return document.body.innerText;
+            return '';
         }""")
     
     async def send_message_streaming(self, message: str, conversation_id: str = None, create_new: bool = True, **kwargs) -> AsyncGenerator[str, None]:
@@ -265,10 +252,8 @@ class GeminiBrowser:
         chat_input = None
         selectors = [
             'rich-textarea div[contenteditable="true"]',
-            'div[contenteditable="true"][data-testid="prompt-input"]',
             'div[contenteditable="true"][role="textbox"]',
             'div[contenteditable="true"]',
-            'textarea[placeholder*="message"]',
         ]
         
         for sel in selectors:
@@ -283,7 +268,7 @@ class GeminiBrowser:
         await asyncio.sleep(0.3)
         
         # Try to click send or press Enter
-        send_button = await self.page.query_selector('button[data-testid="send-button"]')
+        send_button = await self.page.query_selector('button[aria-label="Send message"]')
         if send_button:
             await send_button.click()
         else:

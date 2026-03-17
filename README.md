@@ -1,14 +1,15 @@
-# DeepSeek API Proxy
+# DeepSeek & Gemini API Proxy
 
-A local API server that provides OpenAI-compatible endpoints for DeepSeek Chat using browser automation. This allows you to interact with DeepSeek's AI models without requiring an API key by automating the web-based chat interface.
+A local API server that provides OpenAI-compatible endpoints for DeepSeek Chat and Gemini Web using browser automation. This allows you to interact with AI models without requiring an API key.
 
 ## Features
 
-- **OpenAI-compatible API** - Use OpenAI client libraries to connect to DeepSeek
-- **Browser Automation** - Uses Playwright to interact with DeepSeek's web chat
+- **OpenAI-compatible API** - Use OpenAI client libraries to connect
+- **Browser Automation** - Uses Playwright to interact with web chat UI
+- **Multi-Provider Support** - Currently supports DeepSeek and Gemini 3 Flash
 - **RESTful Endpoints** - Full REST API with standard HTTP methods
 - **Streaming Support** - Real-time streaming responses
-- **Conversation Management** - Continue existing conversations or create new ones
+- **Conversation Management** - Continue existing conversations (DeepSeek only)
 - **Thinking Mode** - Enable DeepSeek's reasoning/think process in responses
 
 ## Requirements
@@ -55,9 +56,14 @@ Edit `config.json` to configure the application:
         "port": 8000
     },
     "deepseek": {
+        "enabled": true,
         "base_url": "https://chat.deepseek.com",
         "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    },
+    "gemini": {
+        "enabled": true,
+        "base_url": "https://gemini.google.com"
     },
     "browser": {
         "use_browser": true,
@@ -78,8 +84,11 @@ Edit `config.json` to configure the application:
 |---------|-------------|---------|
 | `server.host` | Server bind address | `0.0.0.0` |
 | `server.port` | Server port | `8000` |
+| `deepseek.enabled` | Enable/start the DeepSeek provider | `true` |
 | `deepseek.base_url` | DeepSeek web chat URL | `https://chat.deepseek.com` |
 | `deepseek.chrome_path` | Path to Chrome browser | (system default) |
+| `gemini.enabled` | Enable/start the Gemini provider | `true` |
+| `gemini.base_url` | Gemini web chat URL | `https://gemini.google.com` |
 | `browser.use_browser` | Enable browser automation | `true` |
 | `browser.headless` | Run browser in headless mode | `false` |
 | `browser.page_load_timeout` | Page load timeout (seconds) | `60` |
@@ -95,7 +104,7 @@ Edit `config.json` to configure the application:
 python main.py
 ```
 
-The server will start at `http://localhost:8000`. On first run, a browser window will open for you to log in to your DeepSeek account.
+The server will start at `http://localhost:8000`. On first run (if headless is false), a browser window will open for you to log in to your account.
 
 ### API Endpoints
 
@@ -136,15 +145,15 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 **GET** `/v1/models`
 
-List available models:
+List all available and enabled models dynamically:
 
 ```bash
 curl http://localhost:8000/v1/models
 ```
 
-#### Continue Conversation
+#### Continue Conversation (DeepSeek Only)
 
-To continue an existing conversation, provide the `conversation_id` from the DeepSeek chat URL:
+To continue an existing conversation on DeepSeek, provide the `conversation_id` from the DeepSeek chat URL:
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
@@ -159,7 +168,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-**Note:** The `conversation_id` navigates to the existing conversation in the browser. The messages array is only used for the current prompt (last user message).
+**Note:** The `conversation_id` navigates to the existing conversation in the browser. The messages array is only used for the current prompt (last user message). *Gemini unauthenticated mode does not support `conversation_id`.*
 
 ### Using with OpenAI Python Library
 
@@ -205,7 +214,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     "stream": true
   }'
 
-# With thinking mode enabled
+# With thinking mode enabled (DeepSeek Only)
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -213,7 +222,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     "messages": [
       {"role": "user", "content": "Solve this math problem: 2 + 2 = ?"}
     ],
-    "thinking": {"type": "enabled"}
+    "thinking": true
   }'
 ```
 
@@ -221,16 +230,16 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `model` | string | Yes | Model ID (use `deepseek-chat`) |
+| `model` | string | Yes | Model ID (`deepseek-chat`, `gemini-3-flash`, etc.) |
 | `messages` | array | Yes | List of message objects (only the **last user message** is used) |
-| `stream` | boolean | No | Enable streaming. Default: false |
-| `conversation_id` | string | No | Continue existing conversation by navigating to its URL |
-| `create_new` | boolean | No | Create new conversation. Default: true |
-| `thinking` | object | No | Enable thinking mode. Use `{"type": "enabled"}` or `null` to disable. Default: null |
+| `stream` | boolean | No | Enable streaming. Default: `false` |
+| `conversation_id` | string | No | Continue existing conversation by navigating to its URL. *DeepSeek ONLY.* |
+| `create_new` | boolean | No | Create new conversation. Default: `true` |
+| `thinking` | boolean | No | Enable thinking mode. Use `true` to enable. Default: `false` (*DeepSeek ONLY.*) |
 
 ### Message Format
 
-**Note:** Currently, only the **last user message** is sent to DeepSeek. System messages and previous conversation history are not included in the request.
+**Note:** Currently, only the **last user message** is sent to the provider. System messages and previous conversation history are not included in the request.
 
 ```json
 {
@@ -331,15 +340,21 @@ deepseek-api/
 ├── session.json            # Browser session storage
 ├── src/
 │   ├── __init__.py
-│   ├── config.py          # Configuration loader
-│   ├── models.py          # Pydantic request/response models
-│   ├── proxy.py           # DeepSeek proxy implementation
-│   ├── browser.py         # Playwright browser automation
-│   ├── session.py         # Session management
-│   ├── mapper.py          # Data mapping utilities
-│   ├── tokenizer.py      # Token counting utilities
-│   └── constants.py       # Application constants
-└── README.md              # This file
+│   ├── config.py           # Configuration loader
+│   ├── models.py           # Pydantic request/response models
+│   ├── proxy.py            # API & Models Provider Proxy
+│   ├── browser_deepseek.py # Playwright browser automation for DeepSeek
+│   ├── browser_gemini.py   # Playwright browser automation for Gemini
+│   ├── session.py          # Session management
+│   ├── mapper.py           # Data mapping utilities
+│   ├── tokenizer.py        # Token counting utilities
+│   ├── constants.py        # Application constants
+│   └── providers/          # Provider implementations
+│       ├── __init__.py
+│       ├── base.py         # Base Provider interface
+│       ├── deepseek.py     # DeepSeek Provider
+│       └── gemini.py       # Gemini Provider
+└── README.md               # This file
 ```
 
 ## License

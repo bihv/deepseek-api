@@ -20,19 +20,21 @@ class ProxyRouter:
     
     def _initialize_providers(self):
         """Initialize all available providers."""
-        # Initialize DeepSeek provider
-        deepseek_provider = DeepSeekProvider()
-        self._providers["deepseek"] = deepseek_provider
+        # Initialize DeepSeek provider if enabled
+        if config.deepseek.enabled:
+            deepseek_provider = DeepSeekProvider()
+            self._providers["deepseek"] = deepseek_provider
+            
+            for model in deepseek_provider.supported_models:
+                self._model_to_provider[model] = "deepseek"
         
-        for model in deepseek_provider.supported_models:
-            self._model_to_provider[model] = "deepseek"
-        
-        # Initialize Gemini provider
-        gemini_provider = GeminiProvider()
-        self._providers["gemini"] = gemini_provider
-        
-        for model in gemini_provider.supported_models:
-            self._model_to_provider[model] = "gemini"
+        # Initialize Gemini provider if enabled
+        if config.gemini.enabled:
+            gemini_provider = GeminiProvider()
+            self._providers["gemini"] = gemini_provider
+            
+            for model in gemini_provider.supported_models:
+                self._model_to_provider[model] = "gemini"
         
         logger.info(f"Initialized providers: {list(self._providers.keys())}")
         logger.info(f"Model mappings: {self._model_to_provider}")
