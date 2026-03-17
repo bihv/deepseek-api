@@ -4,10 +4,20 @@
     "port": 8000
   },
   "deepseek": {
-    "base_url": "https://chat.deepseek.com"
+    "base_url": "https://chat.deepseek.com",
+    "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
   },
   "browser": {
     "use_browser": true,
-    "headless": false
+    "headless": false,
+    "page_load_timeout": 60,
+    "navigation_timeout": 30,
+    "action_timeout": 10,
+    "max_retries": 3,
+    "retry_delay": 0.5,
+    "disable_dev_shm": true,
+    "no_sandbox": true,
+    "disable_gpu": true
   }
 }

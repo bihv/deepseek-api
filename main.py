@@ -3,12 +3,30 @@ from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 import asyncio
 import json
+import logging
 
 from src.config import config
 from src.models import ChatCompletionRequest, ChatCompletionResponse, ModelList, Model
 from src.proxy import proxy
 from src.session import session_manager
 from src.mapper import map_to_openai_response, generate_chunk, ChunkBuilder
+
+# Configure logging - both console and file
+import os
+from logging.handlers import RotatingFileHandler
+
+# Create logs directory if not exists
+os.makedirs("logs", exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        RotatingFileHandler('logs/app.log', maxBytes=10*1024*1024, backupCount=5),  # 10MB, keep 5 files
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

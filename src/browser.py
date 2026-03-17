@@ -1,12 +1,35 @@
 """DeepSeek Browser Automation - Send messages via UI and extract response."""
 import asyncio
 import json
+import logging
 import re
 from typing import List, Optional, Dict, AsyncGenerator
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from src.models import ChatMessage
 from src.config import config
 from src.constants import DEEPSEEK_BASE_URL, DEEPSEEK_CONVERSATION_URL
+
+logger = logging.getLogger(__name__)
+
+
+async def retry_with_backoff(func, max_retries=None, retry_delay=None):
+    """Retry a function with exponential backoff."""
+    max_retries = max_retries or config.browser.max_retries
+    retry_delay = retry_delay or config.browser.retry_delay
+    
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"All {max_retries} attempts failed: {e}")
+    raise last_error
 
 
 class DeepSeekBrowser:
@@ -21,21 +44,33 @@ class DeepSeekBrowser:
     
     async def start(self, headless: bool = False):
         """Start browser and navigate to DeepSeek."""
+        logger.info("Starting browser...")
         self._playwright = await async_playwright().start()
+        
+        # Build launch args for better performance
+        launch_args = []
+        if config.browser.disable_dev_shm:
+            launch_args.append('--disable-dev-shm-usage')
+        if config.browser.no_sandbox:
+            launch_args.append('--no-sandbox')
+        if config.browser.disable_gpu:
+            launch_args.append('--disable-gpu')
         
         self.browser = await self._playwright.chromium.launch(
             headless=headless,
-            executable_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            executable_path=config.deepseek.chrome_path,
+            args=launch_args
         )
         
         self.context = await self.browser.new_context(
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
+            user_agent=config.deepseek.user_agent
         )
         
         self.page = await self.context.new_page()
         
-        # Use longer timeout and less strict wait strategy for reliability
-        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded', timeout=60000)
+        logger.info(f"Navigating to {DEEPSEEK_BASE_URL}")
+        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded', timeout=config.browser.page_load_timeout * 1000)
+        logger.info("Browser started successfully")
     
     async def wait_for_login(self, timeout: int = 120):
         """Wait for user to manually login."""
@@ -69,15 +104,19 @@ class DeepSeekBrowser:
     async def navigate_to_conversation(self, conversation_id: str = None, create_new: bool = True) -> bool:
         """Navigate to a specific conversation by ID, or create new if specified."""
         if not self.page:
+            logger.warning("Cannot navigate: page not initialized")
             return False
+        
+        logger.info(f"Navigating to conversation: {conversation_id}, create_new={create_new}")
         
         if conversation_id:
             try:
-                await self.page.goto(f'{DEEPSEEK_CONVERSATION_URL}/{conversation_id}', wait_until='domcontentloaded')
+                await self.page.goto(f'{DEEPSEEK_CONVERSATION_URL}/{conversation_id}', wait_until='domcontentloaded', timeout=config.browser.navigation_timeout * 1000)
                 await asyncio.sleep(0.3)
+                logger.info(f"Navigated to conversation {conversation_id}")
                 return True
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to navigate to {conversation_id}: {e}")
         
         if not create_new:
             return True
@@ -96,6 +135,7 @@ class DeepSeekBrowser:
                 if btn:
                     await btn.click()
                     await asyncio.sleep(0.3)
+                    logger.info("Created new conversation")
                     return True
             except:
                 continue
@@ -241,6 +281,8 @@ class DeepSeekBrowser:
         if not self.page:
             raise Exception("Browser not started")
         
+        logger.info(f"Sending message: {message[:50]}...")
+        
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
         
@@ -322,6 +364,8 @@ class DeepSeekBrowser:
         """Send a message and yield response chunks as they arrive."""
         if not self.page:
             raise Exception("Browser not started")
+        
+        logger.info(f"Sending streaming message: {message[:50]}...")
         
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
@@ -459,7 +503,9 @@ class DeepSeekBrowser:
     
     async def close(self):
         """Close browser."""
+        logger.info("Closing browser...")
         if self.browser:
             await self.browser.close()
         if self._playwright:
             await self._playwright.stop()
+        logger.info("Browser closed")

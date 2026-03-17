@@ -1,9 +1,12 @@
 """DeepSeek API Proxy - Uses browser automation."""
 import asyncio
+import logging
 from typing import List, AsyncGenerator, Optional
 from src.models import ChatMessage
 from src.config import config
 from src.constants import DEEPSEEK_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekProxy:

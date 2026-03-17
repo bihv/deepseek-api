@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from src.constants import DEEPSEEK_BASE_URL
 
 
@@ -12,11 +12,24 @@ class ServerConfig(BaseModel):
 
 class DeepSeekConfig(BaseModel):
     base_url: str = DEEPSEEK_BASE_URL
+    chrome_path: Optional[str] = None  # Custom Chrome executable path
+    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
 
 class BrowserConfig(BaseModel):
     use_browser: bool = False
     headless: bool = True
+    # Timeout settings (in seconds)
+    page_load_timeout: int = 60
+    navigation_timeout: int = 30
+    action_timeout: int = 10
+    # Retry settings
+    max_retries: int = 3
+    retry_delay: float = 0.5
+    # Performance args
+    disable_dev_shm: bool = True
+    no_sandbox: bool = True
+    disable_gpu: bool = True
 
 
 class Config(BaseModel):
