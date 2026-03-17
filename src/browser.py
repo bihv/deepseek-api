@@ -1,7 +1,8 @@
 """DeepSeek Browser Automation - Send messages via UI and extract response."""
 import asyncio
 import json
-from typing import List, Optional, Dict
+import re
+from typing import List, Optional, Dict, AsyncGenerator
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from src.models import ChatMessage
 from src.config import config
@@ -15,6 +16,7 @@ class DeepSeekBrowser:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self._playwright = None
+        self._stream_buffer: Dict = {"thinking": "", "answer": ""}
     
     async def start(self, headless: bool = False):
         """Start browser and navigate to DeepSeek."""
@@ -33,7 +35,7 @@ class DeepSeekBrowser:
         
         # Use longer timeout and less strict wait strategy for reliability
         await self.page.goto('https://chat.deepseek.com', wait_until='domcontentloaded', timeout=60000)
-        
+    
     async def wait_for_login(self, timeout: int = 120):
         """Wait for user to manually login."""
         await asyncio.sleep(timeout)
@@ -137,6 +139,74 @@ class DeepSeekBrowser:
         # If no toggle found, log for debugging
         print(f"[Browser] DeepThink toggle not found, enable={enable}")
     
+    async def _setup_dom_observer(self):
+        """Setup MutationObserver to track thinking/answer updates in DOM in real-time."""
+        await self.page.evaluate("""() => {
+            window.__deepseekThinking = '';
+            window.__deepseekAnswer = '';
+            window.__deepseekThinkingChunks = [];
+            window.__deepseekAnswerChunks = [];
+            
+            // Function to extract thinking and answer from DOM
+            const extractContent = () => {
+                const messages = document.querySelectorAll('[class*="message"]');
+                if (messages.length === 0) return;
+                
+                const lastMsg = messages[messages.length - 1];
+                
+                // Get thinking content
+                const thinkEl = lastMsg.querySelector('[class*="ds-think-content"]');
+                window.__deepseekThinking = thinkEl ? thinkEl.innerText : '';
+                
+                // Get answer content (all markdown outside think content)
+                const allMarkdown = lastMsg.querySelectorAll('.ds-markdown, [class*="ds-markdown"]');
+                let answer = '';
+                allMarkdown.forEach(el => {
+                    const parentThink = el.closest('[class*="ds-think-content"]');
+                    if (!parentThink) {
+                        answer += (answer ? '\\n\\n' : '') + el.innerText;
+                    }
+                });
+                window.__deepseekAnswer = answer;
+            };
+            
+            // Set up MutationObserver
+            const observer = new MutationObserver((mutations) => {
+                extractContent();
+            });
+            
+            // Observe document body
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+            
+            // Also check periodically for streaming updates
+            const intervalId = setInterval(extractContent, 100);
+            
+            // Store cleanup function
+            window.__deepseekCleanup = () => {
+                observer.disconnect();
+                clearInterval(intervalId);
+            };
+        }""")
+    
+    async def _get_stream_data(self) -> dict:
+        """Get thinking and answer from DOM observer (real-time during streaming)."""
+        return await self.page.evaluate("""() => ({
+            thinking: window.__deepseekThinking || '',
+            answer: window.__deepseekAnswer || ''
+        })""")
+    
+    async def _cleanup_dom_observer(self):
+        """Cleanup MutationObserver."""
+        await self.page.evaluate("""() => {
+            if (window.__deepseekCleanup) {
+                window.__deepseekCleanup();
+            }
+        }""")
+    
     async def send_message(self, message: str, conversation_id: str = None, create_new: bool = True, thinking: dict = None) -> dict:
         """Send a message and return the response.
         
@@ -151,6 +221,9 @@ class DeepSeekBrowser:
         
         if conversation_id or create_new:
             await self.navigate_to_conversation(conversation_id, create_new)
+        
+        # Setup DOM observer to track thinking/answer updates in real-time
+        await self._setup_dom_observer()
         
         # Handle DeepThink mode
         thinking_enabled = thinking and thinking.get("type") == "enabled"
@@ -184,8 +257,11 @@ class DeepSeekBrowser:
         # Wait for AI to complete by checking UI
         await self._wait_for_completion(timeout=60)
         
-        # Extract thinking and answer separately
-        result = await self._extract_thinking_and_response()
+        # Get thinking and answer from DOM observer
+        result = await self._get_stream_data()
+        
+        # Cleanup observer
+        await self._cleanup_dom_observer()
         
         return {
             "content": result.get("answer", ""),
@@ -322,55 +398,6 @@ class DeepSeekBrowser:
                 return lastMsg.innerText || '';
             }
             return '';
-        }""")
-    
-    async def _extract_thinking_and_response(self) -> dict:
-        """Extract thinking (reasoning) and final answer separately from the UI."""
-        return await self.page.evaluate("""() => {
-            const result = {
-                thinking: '',
-                answer: ''
-            };
-            
-            // Find all message containers (last assistant message)
-            const messages = document.querySelectorAll('[class*="message"]');
-            if (messages.length === 0) {
-                return result;
-            }
-            
-            const lastMsg = messages[messages.length - 1];
-            
-            // Extract thinking content (inside ds-think-content)
-            const thinkingEl = lastMsg.querySelector('[class*="ds-think-content"]');
-            if (thinkingEl) {
-                result.thinking = thinkingEl.innerText || '';
-            }
-            
-            // Extract answer - ds-markdown elements that are NOT inside ds-think-content
-            const allMarkdown = lastMsg.querySelectorAll('.ds-markdown, [class*="ds-markdown"]');
-            const answerParts = [];
-            
-            allMarkdown.forEach(el => {
-                // Check if this markdown is inside think content
-                const parentThink = el.closest('[class*="ds-think-content"]');
-                if (!parentThink) {
-                    // This is the answer part
-                    answerParts.push(el.innerText);
-                }
-            });
-            
-            result.answer = answerParts.join('\\n\\n');
-            
-            // Fallback: if no thinking found, treat everything as answer
-            if (!result.thinking && result.answer) {
-                // Check if there's a "Thought for X seconds" indicator
-                const thinkIndicator = lastMsg.querySelector('[class*="think"]');
-                if (!thinkIndicator) {
-                    result.answer = lastMsg.innerText;
-                }
-            }
-            
-            return result;
         }""")
     
     async def _extract_response(self) -> str:
