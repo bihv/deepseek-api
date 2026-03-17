@@ -57,17 +57,16 @@ Edit `config.json` to configure the application:
     },
     "deepseek": {
         "enabled": true,
-        "base_url": "https://chat.deepseek.com",
-        "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+        "base_url": "https://chat.deepseek.com"
     },
     "gemini": {
         "enabled": true,
         "base_url": "https://gemini.google.com"
     },
     "browser": {
-        "use_browser": true,
         "headless": false,
+        "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
         "page_load_timeout": 60,
         "navigation_timeout": 30,
         "action_timeout": 10,
@@ -86,11 +85,11 @@ Edit `config.json` to configure the application:
 | `server.port` | Server port | `8000` |
 | `deepseek.enabled` | Enable/start the DeepSeek provider | `true` |
 | `deepseek.base_url` | DeepSeek web chat URL | `https://chat.deepseek.com` |
-| `deepseek.chrome_path` | Path to Chrome browser | (system default) |
 | `gemini.enabled` | Enable/start the Gemini provider | `true` |
 | `gemini.base_url` | Gemini web chat URL | `https://gemini.google.com` |
-| `browser.use_browser` | Enable browser automation | `true` |
 | `browser.headless` | Run browser in headless mode | `false` |
+| `browser.chrome_path` | Path to Chrome browser | (system default) |
+| `browser.user_agent` | Custom user agent | Default Chrome UA |
 | `browser.page_load_timeout` | Page load timeout (seconds) | `60` |
 | `browser.navigation_timeout` | Navigation timeout (seconds) | `30` |
 | `browser.action_timeout` | Action timeout (seconds) | `10` |
@@ -315,7 +314,7 @@ data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1234567890
 
 ### Browser not found
 
-If you see an error about Chrome not being found, ensure Chrome is installed and the path in `src/browser.py` is correct.
+If you see an error about Chrome not being found, ensure Chrome is installed and the path in `config.json` (`browser.chrome_path`) is correct.
 
 ### Login issues
 

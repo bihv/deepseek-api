@@ -35,7 +35,7 @@ class GeminiBrowser:
             launch_args.append('--disable-gpu')
         
         # Use Chrome path from config if provided
-        chrome_path = getattr(config.gemini, 'chrome_path', None) or config.deepseek.chrome_path
+        chrome_path = config.browser.chrome_path
         
         self.browser = await self._playwright.chromium.launch(
             headless=headless,
@@ -44,7 +44,7 @@ class GeminiBrowser:
         )
         
         self.context = await self.browser.new_context(
-            user_agent=config.gemini.user_agent
+            user_agent=config.browser.user_agent
         )
         
         self.page = await self.context.new_page()

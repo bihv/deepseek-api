@@ -58,12 +58,12 @@ class DeepSeekBrowser:
         
         self.browser = await self._playwright.chromium.launch(
             headless=headless,
-            executable_path=config.deepseek.chrome_path,
+            executable_path=config.browser.chrome_path,
             args=launch_args
         )
         
         self.context = await self.browser.new_context(
-            user_agent=config.deepseek.user_agent
+            user_agent=config.browser.user_agent
         )
         
         self.page = await self.context.new_page()

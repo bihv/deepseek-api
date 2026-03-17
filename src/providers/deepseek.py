@@ -15,10 +15,7 @@ class DeepSeekProvider(BaseProvider):
     
     def __init__(self):
         self._browser = None
-        self._use_browser = config.browser.use_browser
-        
-        if self._use_browser:
-            self._init_browser()
+        self._init_browser()
     
     def _init_browser(self):
         """Initialize browser automation."""
@@ -27,7 +24,6 @@ class DeepSeekProvider(BaseProvider):
             self._browser = DeepSeekBrowser()
         except Exception as e:
             logger.warning(f"Failed to initialize browser: {e}")
-            self._use_browser = False
     
     @property
     def supported_models(self) -> List[str]:
@@ -39,7 +35,7 @@ class DeepSeekProvider(BaseProvider):
     
     async def start(self):
         """Start browser."""
-        if not self._browser and self._use_browser:
+        if not self._browser:
             self._init_browser()
         
         if self._browser:
@@ -60,7 +56,7 @@ class DeepSeekProvider(BaseProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """Send chat request to DeepSeek."""
-        if not self._use_browser or not self._browser:
+        if not self._browser:
             raise Exception("Browser mode not available")
         
         user_prompt = ""
@@ -93,7 +89,7 @@ class DeepSeekProvider(BaseProvider):
         **kwargs
     ) -> AsyncGenerator[str, None]:
         """Send streaming chat request to DeepSeek."""
-        if not self._use_browser or not self._browser:
+        if not self._browser:
             raise Exception("Browser mode not available")
         
         user_prompt = ""

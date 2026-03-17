@@ -14,10 +14,7 @@ class GeminiProvider(BaseProvider):
     
     def __init__(self):
         self._browser = None
-        self._use_browser = config.browser.use_browser
-        
-        if self._use_browser:
-            self._init_browser()
+        self._init_browser()
     
     def _init_browser(self):
         """Initialize browser automation."""
@@ -26,7 +23,6 @@ class GeminiProvider(BaseProvider):
             self._browser = GeminiBrowser()
         except Exception as e:
             logger.warning(f"Failed to initialize Gemini browser: {e}")
-            self._use_browser = False
     
     @property
     def supported_models(self) -> List[str]:
@@ -38,7 +34,7 @@ class GeminiProvider(BaseProvider):
     
     async def start(self):
         """Start browser."""
-        if not self._browser and self._use_browser:
+        if not self._browser:
             self._init_browser()
         
         if self._browser:
@@ -59,7 +55,7 @@ class GeminiProvider(BaseProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """Send chat request to Gemini."""
-        if not self._use_browser or not self._browser:
+        if not self._browser:
             raise Exception("Gemini browser mode not available")
             
         thinking = kwargs.get("thinking", False)
@@ -96,7 +92,7 @@ class GeminiProvider(BaseProvider):
         **kwargs
     ) -> AsyncGenerator[str, None]:
         """Send streaming chat request to Gemini."""
-        if not self._use_browser or not self._browser:
+        if not self._browser:
             raise Exception("Gemini browser mode not available")
             
         thinking = kwargs.get("thinking", False)

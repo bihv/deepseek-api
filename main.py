@@ -32,8 +32,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    if config.browser.use_browser:
-        await router.start_all()
+    await router.start_all()
     
     yield
     
