@@ -23,7 +23,7 @@ A local API server that provides OpenAI-compatible endpoints for DeepSeek Chat a
 1. **Clone the repository or navigate to the project directory:**
 
 ```bash
-cd deepseek-api
+cd ai-web-proxy
 ```
 
 2. **Create a virtual environment (recommended):**
@@ -333,7 +333,7 @@ The browser automation relies on DeepSeek's UI structure. If responses are not b
 ## Project Structure
 
 ```
-deepseek-api/
+ai-web-proxy/
 ├── main.py                 # FastAPI server entry point
 ├── config.json             # Application configuration
 ├── requirements.txt        # Python dependencies
