@@ -9,6 +9,7 @@ A local API server that provides OpenAI-compatible endpoints for DeepSeek Chat u
 - **RESTful Endpoints** - Full REST API with standard HTTP methods
 - **Streaming Support** - Real-time streaming responses
 - **Conversation Management** - Continue existing conversations or create new ones
+- **Thinking Mode** - Enable DeepSeek's reasoning/think process in responses
 
 ## Requirements
 
@@ -51,15 +52,24 @@ Edit `config.json` to configure the application:
 {
     "server": {
         "host": "0.0.0.0",
-        "port": 8000,
-        "reload": true
-    },
-    "browser": {
-        "headless": false,
-        "timeout": 120
+        "port": 8000
     },
     "deepseek": {
-        "base_url": "https://chat.deepseek.com"
+        "base_url": "https://chat.deepseek.com",
+        "chrome_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+    },
+    "browser": {
+        "use_browser": true,
+        "headless": false,
+        "page_load_timeout": 60,
+        "navigation_timeout": 30,
+        "action_timeout": 10,
+        "max_retries": 3,
+        "retry_delay": 0.5,
+        "disable_dev_shm": true,
+        "no_sandbox": true,
+        "disable_gpu": true
     }
 }
 ```
@@ -68,10 +78,14 @@ Edit `config.json` to configure the application:
 |---------|-------------|---------|
 | `server.host` | Server bind address | `0.0.0.0` |
 | `server.port` | Server port | `8000` |
-| `server.reload` | Auto-reload on code changes | `true` |
-| `browser.headless` | Run browser in headless mode | `false` |
-| `browser.timeout` | Browser operation timeout (seconds) | `120` |
 | `deepseek.base_url` | DeepSeek web chat URL | `https://chat.deepseek.com` |
+| `deepseek.chrome_path` | Path to Chrome browser | (system default) |
+| `browser.use_browser` | Enable browser automation | `true` |
+| `browser.headless` | Run browser in headless mode | `false` |
+| `browser.page_load_timeout` | Page load timeout (seconds) | `60` |
+| `browser.navigation_timeout` | Navigation timeout (seconds) | `30` |
+| `browser.action_timeout` | Action timeout (seconds) | `10` |
+| `browser.max_retries` | Maximum retry attempts | `3` |
 
 ## Usage
 
@@ -145,6 +159,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+**Note:** The `conversation_id` navigates to the existing conversation in the browser. The messages array is only used for the current prompt (last user message).
+
 ### Using with OpenAI Python Library
 
 ```python
@@ -174,10 +190,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{
     "model": "deepseek-chat",
     "messages": [
-      {"role": "system", "content": "You are a helpful assistant."},
       {"role": "user", "content": "Explain quantum computing in simple terms."}
-    ],
-    "temperature": 0.7
+    ]
   }'
 
 # Streaming request
@@ -190,6 +204,17 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     ],
     "stream": true
   }'
+
+# With thinking mode enabled
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-chat",
+    "messages": [
+      {"role": "user", "content": "Solve this math problem: 2 + 2 = ?"}
+    ],
+    "thinking": {"type": "enabled"}
+  }'
 ```
 
 ## Request Parameters
@@ -197,22 +222,20 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `model` | string | Yes | Model ID (use `deepseek-chat`) |
-| `messages` | array | Yes | List of message objects |
-| `temperature` | float | No | Sampling temperature (0.0-2.0). Default: 0.7 |
-| `max_tokens` | integer | No | Maximum tokens to generate |
+| `messages` | array | Yes | List of message objects (only the **last user message** is used) |
 | `stream` | boolean | No | Enable streaming. Default: false |
-| `conversation_id` | string | No | Continue existing conversation |
+| `conversation_id` | string | No | Continue existing conversation by navigating to its URL |
 | `create_new` | boolean | No | Create new conversation. Default: true |
+| `thinking` | object | No | Enable thinking mode. Use `{"type": "enabled"}` or `null` to disable. Default: null |
 
 ### Message Format
+
+**Note:** Currently, only the **last user message** is sent to DeepSeek. System messages and previous conversation history are not included in the request.
 
 ```json
 {
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Your question here"},
-    {"role": "assistant", "content": "Previous response (optional)"},
-    {"role": "user", "content": "Follow-up question"}
+    {"role": "user", "content": "Your question here"}
   ]
 }
 ```
@@ -232,7 +255,9 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "AI response here"
+        "content": "AI response here",
+        "reasoning_content": "Thinking process (if thinking mode enabled)",
+        "thinking_time": 6,
       },
       "finish_reason": "stop"
     }
@@ -241,9 +266,15 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     "prompt_tokens": 10,
     "completion_tokens": 50,
     "total_tokens": 60
-  }
+  },
+  "conversation_id": "abc123xyz"
 }
 ```
+
+**Note:** When thinking mode is enabled, the response will include:
+- `reasoning_content` - The AI's thinking/reasoning process
+- `thinking_time` - Time spent on thinking in seconds
+- `conversation_id` - The DeepSeek conversation ID (returned in response body and headers)
 
 ### Streaming Response
 
@@ -265,7 +296,11 @@ data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1234567890
 
 4. **Rate Limiting**: This proxy uses the web interface, so it inherits the same rate limits as the web chat. Use responsibly.
 
-5. **Use Cases**: This is useful for development, testing, and scenarios where you don't have an API key but need programmatic access to DeepSeek.
+5. **Thinking Mode**: Use `"thinking": {"type": "enabled"}` in your request to enable DeepSeek's reasoning process. This provides more detailed reasoning but may take longer.
+
+6. **Use Cases**: This is useful for development, testing, and scenarios where you don't have an API key but need programmatic access to DeepSeek.
+
+7. **Messages Behavior**: Currently, only the **last user message** in the `messages` array is sent to DeepSeek. System prompts and conversation history are not preserved between requests (unless using `conversation_id` to navigate to an existing conversation in the browser).
 
 ## Troubleshooting
 
@@ -293,6 +328,7 @@ deepseek-api/
 ├── main.py                 # FastAPI server entry point
 ├── config.json             # Application configuration
 ├── requirements.txt        # Python dependencies
+├── session.json            # Browser session storage
 ├── src/
 │   ├── __init__.py
 │   ├── config.py          # Configuration loader
@@ -300,7 +336,9 @@ deepseek-api/
 │   ├── proxy.py           # DeepSeek proxy implementation
 │   ├── browser.py         # Playwright browser automation
 │   ├── session.py         # Session management
-│   └── mapper.py          # Data mapping utilities
+│   ├── mapper.py          # Data mapping utilities
+│   ├── tokenizer.py      # Token counting utilities
+│   └── constants.py       # Application constants
 └── README.md              # This file
 ```
 

@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from src.config import config
-from src.constants import DEEPSEEK_BASE_URL
 
 
 class SessionManager:
@@ -52,8 +51,11 @@ class SessionManager:
         threshold = timedelta(minutes=self.refresh_threshold_minutes)
         return datetime.utcnow() + threshold > self._expires_at
     
-    async def ensure_valid(self, base_url: str = DEEPSEEK_BASE_URL) -> bool:
+    async def ensure_valid(self, base_url: str = None) -> bool:
         """Ensure session is valid."""
+        if base_url is None:
+            base_url = config.deepseek.base_url
+        
         if not self.auto_refresh:
             return bool(self._cookies)
         

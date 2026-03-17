@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List
-from src.constants import DEEPSEEK_BASE_URL
 
 
 class ServerConfig(BaseModel):
@@ -11,7 +10,7 @@ class ServerConfig(BaseModel):
 
 
 class DeepSeekConfig(BaseModel):
-    base_url: str = DEEPSEEK_BASE_URL
+    base_url: str = "https://chat.deepseek.com"
     chrome_path: Optional[str] = None  # Custom Chrome executable path
     user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 

@@ -4,7 +4,6 @@ import logging
 from typing import List, AsyncGenerator, Optional
 from src.models import ChatMessage
 from src.config import config
-from src.constants import DEEPSEEK_BASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +11,8 @@ logger = logging.getLogger(__name__)
 class DeepSeekProxy:
     """Proxy to interact with DeepSeek using browser automation."""
     
-    def __init__(self, base_url: str = DEEPSEEK_BASE_URL, use_browser: bool = True):
-        self.base_url = base_url
+    def __init__(self, base_url: str = None, use_browser: bool = True):
+        self.base_url = base_url or config.deepseek.base_url
         self._browser = None
         self.use_browser = use_browser
         

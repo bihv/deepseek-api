@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, AsyncGenerator
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 from src.models import ChatMessage
 from src.config import config
-from src.constants import DEEPSEEK_BASE_URL, DEEPSEEK_CONVERSATION_URL
+from src.constants import DEEPSEEK_CONVERSATION_URL
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,8 @@ class DeepSeekBrowser:
         
         self.page = await self.context.new_page()
         
-        logger.info(f"Navigating to {DEEPSEEK_BASE_URL}")
-        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded', timeout=config.browser.page_load_timeout * 1000)
+        logger.info(f"Navigating to {config.deepseek.base_url}")
+        await self.page.goto(config.deepseek.base_url, wait_until='domcontentloaded', timeout=config.browser.page_load_timeout * 1000)
         logger.info("Browser started successfully")
     
     async def wait_for_login(self, timeout: int = 120):
@@ -140,7 +140,7 @@ class DeepSeekBrowser:
             except:
                 continue
         
-        await self.page.goto(DEEPSEEK_BASE_URL, wait_until='domcontentloaded')
+        await self.page.goto(config.deepseek.base_url, wait_until='domcontentloaded')
         await asyncio.sleep(0.3)
         return True
     
