@@ -15,7 +15,7 @@
   },
   "browser": {
     "use_browser": true,
-    "headless": true,
+    "headless": false,
     "page_load_timeout": 60,
     "navigation_timeout": 30,
     "action_timeout": 10,
